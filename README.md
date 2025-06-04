@@ -227,7 +227,5 @@ Oh and, while you're here, you may want to check out [some of our other content]
 
 Contributors:
 
-1. Aman Sardana (amasarda@cisco.com)
-2. Steve Holl (sholl@cisco.com)
-
-Cisco CX Lifecycle Services & Automation, June 2024
+1. Aman Sardana (amasarda@cisco.com), Customer Experience AI Engineering
+2. Steve Holl (sholl@cisco.com), Customer Experience Product Management
