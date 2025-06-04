@@ -244,11 +244,11 @@ def edit_config(service,config,stanza,settings):
         print(f"An error occurred while updating the configuration: {e}")
 
 def change_credential(service, username, realm, new_password):
-    '''Changes a stored credentia in splunk when given a authenticated service, username, realm, and new password.'''
+    '''Changes a stored credential in splunk when given a authenticated service, username, realm, and new password.'''
     try:
         storage_passwords = s.storage_passwords
         service.storage_passwords.create(password=new_password, username=username, realm=realm)
-        print(f"Username: {cred.content.get('username')} changed successful.")
+        print(f"Password for username: {username} in realm: {realm} changed successfully.")
     
     except Exception as e:
         print(f"An error occurred while retrieving the credentials: {e}")
