@@ -5,3 +5,4 @@ py/.venv
 secrets/
 otelcol
 data/otelcol-export-live.jsonl
+cfg/intersight_otel.toml
