@@ -49,7 +49,7 @@ def get_input_for_auth():
         "password": None
     }    
     i['host'] = input('Enter your splunk IP or hostname: ')
-    if i['host'] == None:
+    if not i['host']:
         i['host'] = 'localhost'
         
     
@@ -59,11 +59,11 @@ def get_input_for_auth():
                 and not the port used for the management API. \
                 To validate, check what port your Universal Forwarders are sending to.')
         i['port'] = input('Enter your Splunk management port (usually 8089): ')
-    if i['port'] == None:
+    if not i['port']:
         i['port'] = '8089'  
         
-    i['username'] = input('Enter your Splunk username: ') 
-    if i['username'] == None:
+    i['username'] = input('Enter your Splunk username: ')
+    if not i['username']:
         i['username'] = 'admin' 
         
     while not i['password']:    
