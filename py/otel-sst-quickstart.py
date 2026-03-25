@@ -255,17 +255,25 @@ def change_credential(service, username, realm, new_password):
 
 def post_data_to_index(service, file_path, index, sourcetype, source):
     '''Posts data payload to an existing index'''
-    
+
     with open(file_path, 'r') as file:
-        for line in file:                
-            s.post(
+        lines = file.readlines()
+        total = len(lines)
+        print(f'Posting {total} events to {index}...', end='', flush=True)
+
+        for i, line in enumerate(lines, 1):
+            service.post(
                 '/services/receivers/simple',
                 source=source,
                 sourcetype=sourcetype,
                 index=index,
                 body=line.strip()
             )
-    print(f'Wrote sample data from {file_path} to {index}.')
+            # Show progress every 1000 lines
+            if i % 1000 == 0:
+                print(f'\rPosting {total} events to {index}... {i}/{total} ({i*100//total}%)', end='', flush=True)
+
+        print(f'\rWrote {total} events from {file_path} to {index}.')
 
         
 def create_input(service,file_path,index,sourcetype):  
