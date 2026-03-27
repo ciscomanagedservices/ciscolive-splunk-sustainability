@@ -50,22 +50,22 @@ def get_input_for_auth():
     """Collects input for Splunk server authentication from the user in CLI.
     Returns a dict for splunk_auth()."""
     i = {"host": None, "port": None, "username": None, "password": None}
-    i["host"] = input("Enter your splunk IP or hostname: ")
+    i["host"] = input("Enter your splunk IP or hostname: ").strip()
     if not i["host"]:
         i["host"] = "localhost"
 
-    i["port"] = input("Enter your Splunk management port (usually 8089): ")
+    i["port"] = input("Enter your Splunk management port (usually 8089): ").strip()
     if i["port"] == "8000":
         print(
             "INFO: Port 8000 is usually the Splunk Web port to acces the UI, \
                 and not the port used for the management API. \
                 To validate, check what port your Universal Forwarders are sending to."
         )
-        i["port"] = input("Enter your Splunk management port (usually 8089): ")
+        i["port"] = input("Enter your Splunk management port (usually 8089): ").strip()
     if not i["port"]:
         i["port"] = "8089"
 
-    i["username"] = input("Enter your Splunk username: ")
+    i["username"] = input("Enter your Splunk username: ").strip()
     if not i["username"]:
         i["username"] = "admin"
 
