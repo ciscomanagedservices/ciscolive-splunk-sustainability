@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.4 - 27-mar-2026 - Fix __file__ path bug, add lookup transforms.conf registration, fix power-otel SPL.
 # v1.3 - 27-mar-2026 - Automated Electricity Maps API key config and sample lookup file upload.
 # v1.2 - 27-mar-2026 - Added Splunkbase app check and automated install support.
 # v1.1 - 31-may-2024 - Added support to automate loading example files into splunk for
@@ -30,7 +31,7 @@ import sys
 
 def _get_spl_from_file(filename):
     """internal function to get the path where the spl file is located"""
-    p = os.path.dirname(os.path.realpath("__file__"))
+    p = os.path.dirname(os.path.realpath(__file__))
     path = Path(p)
     f = os.path.join(path.parent.absolute(), "splunk", "spl", filename)
     with open(f, "r") as file:
@@ -40,7 +41,7 @@ def _get_spl_from_file(filename):
 
 def _get_sample_data_path(filename):
     """Internal function to get path of sample file data for loading in, if desired."""
-    p = os.path.dirname(os.path.realpath("__file__"))
+    p = os.path.dirname(os.path.realpath(__file__))
     path = Path(p)
     f = os.path.join(path.parent.absolute(), "data", filename)
     return f
@@ -415,6 +416,31 @@ def edit_config(service, config, stanza, settings):
         print(f"An error occurred while updating the configuration: {e}")
 
 
+def create_lookup_definition(service, lookup_name, csv_filename):
+    """Creates a lookup transform definition (transforms.conf stanza) for a CSV lookup file.
+    Splunk requires a named lookup definition to use a CSV file with the 'lookup' command
+    or 'inputlookup'. If the definition already exists it is left unchanged.
+
+    Parameters:
+        service      -- authenticated Splunk service object
+        lookup_name  -- stanza name / lookup table name (e.g. 'otel_sample_cmdb')
+        csv_filename -- CSV filename in the app lookups dir (e.g. 'otel_sample_cmdb.csv')
+    """
+    try:
+        service.post(
+            "data/transforms/lookups",
+            name=lookup_name,
+            filename=csv_filename,
+        )
+        print(f"Lookup definition '{lookup_name}' created for '{csv_filename}'.")
+    except Exception as e:
+        err_str = str(e)
+        if "already exists" in err_str or "409" in err_str:
+            print(f"Lookup definition '{lookup_name}' already exists, skipping.")
+        else:
+            print(f"WARNING: Could not create lookup definition '{lookup_name}': {e}")
+
+
 def change_credential(service, username, realm, new_password):
     """Changes a stored credential in splunk when given a authenticated service, username, realm, and new password."""
     try:
@@ -734,9 +760,7 @@ _lookup_dst_dir.mkdir(parents=True, exist_ok=True)
 if load_data.lower() in ("y", "yes"):
     # User loaded sample data — copy the matching sample lookup CSVs automatically.
     _lookup_src_dir = (
-        Path(os.path.dirname(os.path.realpath("__file__"))).parent
-        / "splunk"
-        / "lookups"
+        Path(os.path.dirname(os.path.realpath(__file__))).parent / "splunk" / "lookups"
     )
     for _csv in ("otel_sample_cmdb.csv", "otel_sample_sites.csv"):
         shutil.copy(str(_lookup_src_dir / _csv), str(_lookup_dst_dir / _csv))
@@ -764,6 +788,11 @@ else:
         f"  {_lookup_dst_dir}/otel_sample_sites.csv — map site names to location and carbon source\n"
         "Use the Splunk App for Lookup File Editing (lookup_editor) to edit them via the UI."
     )
+
+# Register lookup transform definitions so the 'lookup' and 'inputlookup' commands
+# can find the CSV files by name (Splunk requires a transforms.conf stanza).
+create_lookup_definition(s, "otel_sample_cmdb", "otel_sample_cmdb.csv")
+create_lookup_definition(s, "otel_sample_sites", "otel_sample_sites.csv")
 
 
 # Step 3 - Create power-otel search macro

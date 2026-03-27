@@ -1,22 +1,20 @@
-index=otel 
-| spath input=_raw output=resourceMetrics path=resourceMetrics{} 
-| mvexpand resourceMetrics 
-| spath input=resourceMetrics output=myAttributes path=resource{}.attributes{} 
-| rex field=myAttributes max_match=1 "(?<myHostname>\"key\":\s*\"host\.name\",\"value\":\s*{\"stringValue\":\s*\".*?})" 
-| rex field=myHostname max_match=1 ("?<myStringValue>stringValue\"\s*:\".*\"") 
-| eval myHostnameValueTmp=split(myStringValue,":") 
-| eval myHostnameValue=mvindex(myHostnameValueTmp,1) 
-| eval myHostValue2=replace(myHostnameValue,"\\\\","") 
-| eval myHostValue3=replace(myHostValue2,"\"","") 
-| spath input=resourceMetrics output=metrics path=scopeMetrics{}.metrics{} 
-| mvexpand metrics 
-| spath input=metrics output=metricName path=name 
-| search metricName="hw.host.power-Sum" 
-| spath input=metrics output=dataPoints path=gauge.dataPoints{} 
-| mvexpand dataPoints 
-| spath input=dataPoints path=asDouble output=powerConsumed 
-| spath input=dataPoints path=startTimeUnixNano output=startTimeUnixNano 
-| eval _time=startTimeUnixNano/pow(10,9), AverageConsumedkW=round(powerConsumed/1000, 3) 
-| rename myHostValue3 as "Asset IP" 
-| bin _time span=1h 
+index=otel
+| spath input=_raw output=resourceMetrics path=resourceMetrics{}
+| mvexpand resourceMetrics
+| spath input=resourceMetrics output=attrs path=resource{}.attributes{}
+| mvexpand attrs
+| spath input=attrs output=attrKey path=key
+| spath input=attrs output=attrVal path=value.stringValue
+| search attrKey="host.name"
+| eval "Asset IP"=replace(attrVal, "\"", "")
+| spath input=resourceMetrics output=metrics path=scopeMetrics{}.metrics{}
+| mvexpand metrics
+| spath input=metrics output=metricName path=name
+| search metricName="hw.host.power-Sum"
+| spath input=metrics output=dataPoints path=gauge.dataPoints{}
+| mvexpand dataPoints
+| spath input=dataPoints path=asDouble output=powerConsumed
+| spath input=dataPoints path=startTimeUnixNano output=startTimeUnixNano
+| eval _time=startTimeUnixNano/pow(10,9), AverageConsumedkW=round(powerConsumed/1000, 3)
+| bin _time span=1h
 | stats avg(AverageConsumedkW) as AverageConsumedkW by _time "Asset IP"
