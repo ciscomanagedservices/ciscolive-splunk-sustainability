@@ -231,6 +231,7 @@ def install_app_from_splunkbase(service, folder_name, splunkbase_token):
     try:
         service.post(
             f"apps/remote/entriesbyid/{folder_name}",
+            headers=[("Content-Type", "application/x-www-form-urlencoded")],
             auth=splunkbase_token,
             action="install",
         )
