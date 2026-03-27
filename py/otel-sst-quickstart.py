@@ -192,41 +192,49 @@ def schedule_saved_search(service, search_name, cron):
         print("ERROR: Failed to edit schedule for search {search_name}")
 
 
-def splunkbase_auth(sb_username, sb_password):
-    """Authenticates to Splunkbase and returns a session token.
-    Raises an exception on failure."""
-    url = "https://splunkbase.splunk.com/api/account:login/"
-    data = urllib.parse.urlencode(
-        {"username": sb_username, "password": sb_password}
-    ).encode("utf-8")
-    req = urllib.request.Request(url, data=data)
+def splunkbase_auth(service, sb_username, sb_password):
+    """Authenticates to Splunkbase via Splunk's proxied login endpoint
+    (apps/remote/login) and returns a session token.
+
+    Using Splunk's proxy avoids having to parse the raw Splunkbase Atom XML
+    directly. The proxy returns a clean <sessionKey> element.
+    Raises RuntimeError on failure."""
     try:
-        with urllib.request.urlopen(req) as resp:
-            body = resp.read().decode("utf-8")
-        # Response is XML: <response><sessionid>TOKEN</sessionid>...</response>
+        resp = service.post(
+            "apps/remote/login",
+            username=sb_username,
+            password=sb_password,
+        )
+        # Response XML: <response><sessionKey>TOKEN</sessionKey></response>
         import re
 
-        m = re.search(r"<sessionid>(.+?)</sessionid>", body)
+        body = (
+            resp["body"].read().decode("utf-8")
+            if hasattr(resp["body"], "read")
+            else str(resp["body"])
+        )
+        m = re.search(r"<sessionKey>([^<]+)</sessionKey>", body)
         if not m:
-            raise ValueError("No sessionid found in Splunkbase response.")
+            raise ValueError("No <sessionKey> found in Splunkbase login response.")
         return m.group(1)
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Splunkbase authentication failed: HTTP {e.code}") from e
+    except Exception as e:
+        raise RuntimeError(f"Splunkbase authentication failed: {e}") from e
 
 
-def install_app_from_splunkbase(service, splunkbase_app_id, splunkbase_token):
-    """Installs a Splunkbase app onto Splunk via the remote install REST endpoint.
-    Uses the numeric app ID (not the display name) to avoid the "spaces/special characters"
-    HTTP 400 error from the Splunk management API."""
+def install_app_from_splunkbase(service, folder_name, splunkbase_token):
+    """Installs a Splunkbase app via Splunk's proxied remote install endpoint.
+
+    Uses the app's folder name (e.g. 'Sustainability_Toolkit') in the endpoint
+    path apps/remote/entriesbyid/<folder_name>, with auth=<token> and
+    action=install. This is how Splunk Web itself installs apps."""
     try:
-        # The correct endpoint uses the numeric Splunkbase app ID as the name parameter.
         service.post(
-            "apps/remote/install",
-            name=str(splunkbase_app_id),
-            auth_token=splunkbase_token,
+            f"apps/remote/entriesbyid/{folder_name}",
+            auth=splunkbase_token,
+            action="install",
         )
     except Exception as e:
-        raise RuntimeError(f"Install failed for app ID {splunkbase_app_id}: {e}") from e
+        raise RuntimeError(f"Install failed for app '{folder_name}': {e}") from e
 
 
 def check_and_install_apps(service, app_specs):
@@ -290,7 +298,7 @@ def check_and_install_apps(service, app_specs):
     sb_password = getpass("Enter your splunk.com password: ")
 
     try:
-        sb_token = splunkbase_auth(sb_username, sb_password)
+        sb_token = splunkbase_auth(service, sb_username, sb_password)
         print("  Authenticated to Splunkbase successfully.")
     except RuntimeError as e:
         print(f"  ERROR: {e}")
@@ -302,7 +310,7 @@ def check_and_install_apps(service, app_specs):
     for spec in missing:
         print(f"\n  Installing {spec['display_name']}...")
         try:
-            install_app_from_splunkbase(service, spec["splunkbase_id"], sb_token)
+            install_app_from_splunkbase(service, spec["folder_name"], sb_token)
             print(f"  Installed {spec['display_name']} successfully.")
         except RuntimeError as e:
             print(f"  ERROR installing {spec['display_name']}: {e}")
