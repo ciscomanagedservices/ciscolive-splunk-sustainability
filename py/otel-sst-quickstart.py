@@ -394,16 +394,21 @@ def edit_config(service, config, stanza, settings):
     Reqires an authenticated splunk service, config file name, stanza ([header] in the config)
     and a dict of the parameters to change."""
 
-    conf_endpoint = service.confs[config]
+    try:
+        conf_endpoint = service.confs[config]
+    except KeyError:
+        # Conf file doesn't exist yet - create it via direct REST POST
+        service.post(f"configs/conf-{config}", name=stanza)
+        conf_endpoint = service.confs[config]
 
     try:
         if stanza in conf_endpoint:
-            stanza = conf_endpoint[stanza]
+            stanza_obj = conf_endpoint[stanza]
         else:
-            stanza = conf_endpoint.create(stanza)
+            stanza_obj = conf_endpoint.create(stanza)
 
         for key, value in settings.items():
-            stanza.update(**{key: value}).refresh()
+            stanza_obj.update(**{key: value}).refresh()
         print(f"Configuration parameters updated successfully for {config}.")
 
     except Exception as e:
