@@ -662,18 +662,32 @@ while not emaps_api_key:
         "API key cannot be empty. Enter your Electricity Maps API key: "
     ).strip()
 
-# Write the account credentials directly into the TA conf.
-# The stanza 'electricitymaps' is pre-created by the TA; update it in-place.
-edit_config(
-    s,
-    "ta_electricity_carbon_intensity_add_on_for_splunk_account",
-    "electricitymaps",
-    {
-        "username": "https://api.electricitymap.org/v3",
-        "password": emaps_api_key,
-    },
-)
-print("Electricity Maps API account configured successfully.")
+# Write the account credentials via the TA's custom REST handler.
+# The TA uses an AOB admin_external handler, not a standard conf endpoint,
+# so we POST directly to the handler. Try update (POST to named entry) first;
+# if that 404s, create a new entry instead.
+_ta_acct_path = "TA_electricity_carbon_intensity_add_on_for_splunk_account"
+_ta_acct_data = {
+    "username": "https://api.electricitymap.org/v3",
+    "password": emaps_api_key,
+}
+try:
+    # Attempt update of existing 'electricitymaps' account
+    s.post(
+        f"{_ta_acct_path}/electricitymaps",
+        headers=[("Content-Type", "application/x-www-form-urlencoded")],
+        **_ta_acct_data,
+    )
+    print("Electricity Maps API account updated successfully.")
+except Exception:
+    # Account doesn't exist yet — create it
+    s.post(
+        _ta_acct_path,
+        headers=[("Content-Type", "application/x-www-form-urlencoded")],
+        name="electricitymaps",
+        **_ta_acct_data,
+    )
+    print("Electricity Maps API account created successfully.")
 
 answer = input(
     "Do you already know the name of your electricitymaps zones? If not, we can show \
