@@ -202,6 +202,7 @@ def splunkbase_auth(service, sb_username, sb_password):
     try:
         resp = service.post(
             "apps/remote/login",
+            headers=[("Content-Type", "application/x-www-form-urlencoded")],
             username=sb_username,
             password=sb_password,
         )
