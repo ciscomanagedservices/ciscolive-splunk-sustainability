@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.3 - 27-mar-2026 - Automated Electricity Maps API key config and sample lookup file upload.
 # v1.2 - 27-mar-2026 - Added Splunkbase app check and automated install support.
 # v1.1 - 31-may-2024 - Added support to automate loading example files into splunk for
 # those that don't have an active OpenTelemetry pipeline to ingest from.
@@ -23,7 +24,7 @@ from getpass import getpass
 import os
 from pathlib import Path
 import json
-import time
+import shutil
 import sys
 
 
@@ -643,25 +644,31 @@ if load_data.lower() == "y" or load_data.lower() == "yes":
 
 # Step 2 - Configure Electricity Maps
 
-"""Conf ta_electricity_carbon_intensity_add_on_for_splunk_account is not created until the first account is added, and
-Adding new conf files from REST is not supported. This step must be done manually."""
-
 print("Switching to the carbon intensity app context.")
 i["app"] = "TA-electricity-carbon-intensity"
 s = splunk_auth(i)
 
-url = f"http(s)://{i['host']}:8000/en-US/app/TA-electricity-carbon-intensity/configuration"
+emaps_api_key = input(
+    "\nEnter your Electricity Maps API key (get one at https://api.electricitymap.org/): "
+).strip()
 
-print(
-    f"\n***ACTION REQUIRED***\nPlease navigate to this URL, click Add, and provision your electrictymaps API account, \
-then return back here:\n{url}\n\nUse the following information:\n Electricity Maps Account name: \
-electricitymaps\n Base Product URL: https://api.electricitymap.org/v3\n API Key: [your API key]"
-)
+while not emaps_api_key:
+    emaps_api_key = input(
+        "API key cannot be empty. Enter your Electricity Maps API key: "
+    ).strip()
 
-time.sleep(5)
-input(
-    "\nOnce you complete this step return to this window and hit enter to proceed with the automation: "
+# Write the account credentials directly into the TA conf.
+# The stanza 'electricitymaps' is pre-created by the TA; update it in-place.
+edit_config(
+    s,
+    "ta_electricity_carbon_intensity_add_on_for_splunk_account",
+    "electricitymaps",
+    {
+        "username": "https://api.electricitymap.org/v3",
+        "password": emaps_api_key,
+    },
 )
+print("Electricity Maps API account configured successfully.")
 
 answer = input(
     "Do you already know the name of your electricitymaps zones? If not, we can show \
@@ -695,19 +702,43 @@ s = splunk_auth(i)
 
 #################################################
 
-# Update search macros that reference sample lookup to use lookup files. Uploading the lookup file needs
-# to be manually done by the user.
+# Update search macros that reference sample lookup to use lookup files, and optionally
+# auto-copy the sample CSVs into the app's lookups directory.
 rename_macro(s, "cmdb-lookup-name", "cmdb-lookup-name-old")
 create_macro(s, "cmdb-lookup-name", "otel_sample_cmdb.csv")
 
 rename_macro(s, "sites-lookup-name", "sites-lookup-name-old")
 create_macro(s, "sites-lookup-name", "otel_sample_sites.csv")
 
-input(
-    "\n***ACTION REQUIRED***\nYou must edit the lookup files to match hostnames to site information. \
-See the splunk/lookups folder for examples. We have automated changing the search macros cmdb-lookup-name \
-and sites-lookup-name that reference these files for you. Press enter when complete:"
+load_lookups = (
+    input(
+        "\nWould you like to load the sample lookup files (otel_sample_cmdb.csv and otel_sample_sites.csv)? "
+        "These map hostnames to site and asset information. (y/n): "
+    )
+    .strip()
+    .lower()
 )
+
+if load_lookups in ("y", "yes"):
+    _lookup_src_dir = (
+        Path(os.path.dirname(os.path.realpath("__file__"))).parent
+        / "splunk"
+        / "lookups"
+    )
+    _lookup_dst_dir = Path("/opt/splunk/etc/apps/Sustainability_Toolkit/lookups")
+    _lookup_dst_dir.mkdir(parents=True, exist_ok=True)
+    for _csv in ("otel_sample_cmdb.csv", "otel_sample_sites.csv"):
+        _src = _lookup_src_dir / _csv
+        _dst = _lookup_dst_dir / _csv
+        shutil.copy(str(_src), str(_dst))
+        print(f"Copied {_csv} to {_dst}")
+    print("Sample lookup files loaded. Edit them to match your environment as needed.")
+else:
+    print(
+        "Skipping lookup file copy. To load them manually, copy otel_sample_cmdb.csv and "
+        "otel_sample_sites.csv from the splunk/lookups folder to "
+        "/opt/splunk/etc/apps/Sustainability_Toolkit/lookups/"
+    )
 
 
 # Step 3 - Create power-otel search macro
