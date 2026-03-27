@@ -465,33 +465,102 @@ def create_input(service, file_path, index, sourcetype):
         print(f"An error occurred creating the data input for {file_path}: {e}")
 
 
+def _rebase_otel_timestamps(src_path, offset_ns):
+    """Returns a list of JSON strings with all OTel nanosecond timestamps
+    shifted forward by offset_ns nanoseconds."""
+    rebased = []
+    with open(src_path, "r") as f:
+        for line in f:
+            d = json.loads(line)
+            for rm in d.get("resourceMetrics", []):
+                for sm in rm.get("scopeMetrics", []):
+                    for m in sm.get("metrics", []):
+                        for pt in m.get("gauge", {}).get("dataPoints", []):
+                            for field in ("startTimeUnixNano", "timeUnixNano"):
+                                if field in pt:
+                                    pt[field] = str(int(pt[field]) + offset_ns)
+            rebased.append(json.dumps(d))
+    return rebased
+
+
+def _rebase_emaps_timestamps(src_path, offset_seconds):
+    """Returns a list of JSON strings with emaps datetime/updatedAt fields
+    shifted forward by offset_seconds seconds."""
+    import datetime
+
+    rebased = []
+    with open(src_path, "r") as f:
+        for line in f:
+            d = json.loads(line)
+            for field in ("datetime", "updatedAt"):
+                if field in d:
+                    ts = datetime.datetime.fromisoformat(
+                        d[field].replace("Z", "+00:00")
+                    )
+                    ts += datetime.timedelta(seconds=offset_seconds)
+                    d[field] = (
+                        ts.strftime("%Y-%m-%dT%H:%M:%S.")
+                        + f"{ts.microsecond // 1000:03d}Z"
+                    )
+            rebased.append(json.dumps(d))
+    return rebased
+
+
 def _add_sample_data(i):
-    """Adds sample jsonl OTel data and associated electricty maps data from the same timeperiod
-    to a splunk index named otel, when provided input for splunk authentication. Assumes sample file locations from git repo."""
+    """Adds sample jsonl OTel data and associated electricity maps data,
+    with all timestamps rebased so the end of the dataset lands at the
+    current time. Assumes sample file locations from git repo."""
+    import datetime, tempfile, os
 
-    # Add example emaps historical data aligned to the sample file
-    f = _get_sample_data_path("emaps-export.jsonl")
-    i["app"] = "TA-electricity-carbon-intensity"
-    s = splunk_auth(i)
-    post_data_to_index(
-        service=s,
-        file_path=f,
-        index="electricity_carbon_intensity",
-        sourcetype="EM:carbonintensity",
-        source="electricity_maps_carbon_intensity_latest",
+    # Compute offset: shift data so OTel max timestamp (2024-05-22 16:00:28 UTC)
+    # lands at the current time.
+    data_end_utc = datetime.datetime(
+        2024, 5, 22, 16, 0, 28, tzinfo=datetime.timezone.utc
+    )
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    offset_seconds = (now_utc - data_end_utc).total_seconds()
+    offset_ns = int(offset_seconds * 1_000_000_000)
+    print(
+        f"Rebasing sample data timestamps by {offset_seconds / 86400:.1f} days to current time..."
     )
 
-    # Add example OTel JSON
-    f = _get_sample_data_path("otelcol-export.jsonl")
-    i["app"] = "Sustainability_Toolkit"
-    s = splunk_auth(i)
-    post_data_to_index(
-        service=s,
-        file_path=f,
-        index="otel",
-        sourcetype="_json",
-        source="otelcol-export.json",
-    )
+    # Add example emaps historical data with rebased timestamps
+    src = _get_sample_data_path("emaps-export.jsonl")
+    rebased_lines = _rebase_emaps_timestamps(src, offset_seconds)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as tmp:
+        tmp.write("\n".join(rebased_lines))
+        tmp_emaps = tmp.name
+    try:
+        i["app"] = "TA-electricity-carbon-intensity"
+        s = splunk_auth(i)
+        post_data_to_index(
+            service=s,
+            file_path=tmp_emaps,
+            index="electricity_carbon_intensity",
+            sourcetype="EM:carbonintensity",
+            source="electricity_maps_carbon_intensity_latest",
+        )
+    finally:
+        os.unlink(tmp_emaps)
+
+    # Add example OTel JSON with rebased timestamps
+    src = _get_sample_data_path("otelcol-export.jsonl")
+    rebased_lines = _rebase_otel_timestamps(src, offset_ns)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as tmp:
+        tmp.write("\n".join(rebased_lines))
+        tmp_otel = tmp.name
+    try:
+        i["app"] = "Sustainability_Toolkit"
+        s = splunk_auth(i)
+        post_data_to_index(
+            service=s,
+            file_path=tmp_otel,
+            index="otel",
+            sourcetype="_json",
+            source="otelcol-export.json",
+        )
+    finally:
+        os.unlink(tmp_otel)
 
 
 ##########################################################################################################
@@ -522,7 +591,7 @@ REQUIRED_APPS = [
     },
     {
         "display_name": "Splunk MCP Server",
-        "folder_name": "splunk_mcp",
+        "folder_name": "Splunk_MCP_Server",
         "splunkbase_id": 7582,
         "required": False,
     },
