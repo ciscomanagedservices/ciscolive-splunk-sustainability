@@ -721,42 +721,48 @@ s = splunk_auth(i)
 
 #################################################
 
-# Update search macros that reference sample lookup to use lookup files, and optionally
-# auto-copy the sample CSVs into the app's lookups directory.
+# Update search macros that reference sample lookup to use lookup files.
 rename_macro(s, "cmdb-lookup-name", "cmdb-lookup-name-old")
 create_macro(s, "cmdb-lookup-name", "otel_sample_cmdb.csv")
 
 rename_macro(s, "sites-lookup-name", "sites-lookup-name-old")
 create_macro(s, "sites-lookup-name", "otel_sample_sites.csv")
 
-load_lookups = (
-    input(
-        "\nWould you like to load the sample lookup files (otel_sample_cmdb.csv and otel_sample_sites.csv)? "
-        "These map hostnames to site and asset information. (y/n): "
-    )
-    .strip()
-    .lower()
-)
+_lookup_dst_dir = Path("/opt/splunk/etc/apps/Sustainability_Toolkit/lookups")
+_lookup_dst_dir.mkdir(parents=True, exist_ok=True)
 
-if load_lookups in ("y", "yes"):
+if load_data.lower() in ("y", "yes"):
+    # User loaded sample data — copy the matching sample lookup CSVs automatically.
     _lookup_src_dir = (
         Path(os.path.dirname(os.path.realpath("__file__"))).parent
         / "splunk"
         / "lookups"
     )
-    _lookup_dst_dir = Path("/opt/splunk/etc/apps/Sustainability_Toolkit/lookups")
-    _lookup_dst_dir.mkdir(parents=True, exist_ok=True)
     for _csv in ("otel_sample_cmdb.csv", "otel_sample_sites.csv"):
-        _src = _lookup_src_dir / _csv
-        _dst = _lookup_dst_dir / _csv
-        shutil.copy(str(_src), str(_dst))
-        print(f"Copied {_csv} to {_dst}")
-    print("Sample lookup files loaded. Edit them to match your environment as needed.")
+        shutil.copy(str(_lookup_src_dir / _csv), str(_lookup_dst_dir / _csv))
+        print(f"Copied {_csv} to {_lookup_dst_dir}")
+    print("Sample lookup files loaded.")
 else:
+    # No sample data — create stub CSVs with headers only so the lookup files exist.
+    _cmdb_header = (
+        "Asset IP,Site,Country,Location,Application,Embodied CO2e,Years Lifetime\n"
+    )
+    _sites_header = "Site,Electricity CO2e per kWh Source,Electricity CO2e per kWh Source Location Code,Electricity Cost Source,Latitude,Longitude\n"
+    for _csv, _header in (
+        ("otel_sample_cmdb.csv", _cmdb_header),
+        ("otel_sample_sites.csv", _sites_header),
+    ):
+        _dst = _lookup_dst_dir / _csv
+        if not _dst.exists():
+            _dst.write_text(_header)
+            print(f"Created stub lookup file: {_dst}")
+        else:
+            print(f"Lookup file already exists, skipping: {_dst}")
     print(
-        "Skipping lookup file copy. To load them manually, copy otel_sample_cmdb.csv and "
-        "otel_sample_sites.csv from the splunk/lookups folder to "
-        "/opt/splunk/etc/apps/Sustainability_Toolkit/lookups/"
+        "\nACTION REQUIRED: Edit the two lookup files to match your environment:\n"
+        f"  {_lookup_dst_dir}/otel_sample_cmdb.csv  — map OTel hostnames to site/asset info\n"
+        f"  {_lookup_dst_dir}/otel_sample_sites.csv — map site names to location and carbon source\n"
+        "Use the Splunk App for Lookup File Editing (lookup_editor) to edit them via the UI."
     )
 
 
