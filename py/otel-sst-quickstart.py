@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.6 - 30-mar-2026 - Dispatch summary search at end of setup so dashboard is immediately populated.
 # v1.5 - 30-mar-2026 - Write MAX_DAYS_HENCE=14 to TA-electricity-carbon-intensity props.conf.
 # v1.4 - 27-mar-2026 - Fix __file__ path bug, add lookup transforms.conf registration, fix power-otel SPL.
 # v1.3 - 27-mar-2026 - Automated Electricity Maps API key config and sample lookup file upload.
@@ -28,6 +29,9 @@ from pathlib import Path
 import json
 import shutil
 import sys
+import ssl
+import base64
+import time
 
 
 def _get_spl_from_file(filename):
@@ -539,6 +543,54 @@ def _rebase_emaps_timestamps(src_path, offset_seconds):
     return rebased
 
 
+def dispatch_saved_search(auth_input, search_name, poll_interval=5, timeout=300):
+    """Dispatch a saved search by name and block until it completes.
+
+    Uses direct HTTPS calls (not splunk-sdk) so it works regardless of the
+    current service app context.  Returns the final dispatchState string
+    ('DONE' or 'FAILED').
+    """
+    host = auth_input["host"]
+    port = auth_input["port"]
+    base_url = f"https://{host}:{port}"
+    creds = base64.b64encode(
+        f"{auth_input['username']}:{auth_input['password']}".encode()
+    ).decode()
+    hdrs = {
+        "Authorization": f"Basic {creds}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    encoded_name = urllib.parse.quote(search_name, safe="")
+    dispatch_url = f"{base_url}/servicesNS/admin/Sustainability_Toolkit/saved/searches/{encoded_name}/dispatch"
+    body = urllib.parse.urlencode({"output_mode": "json"}).encode()
+    req = urllib.request.Request(dispatch_url, data=body, headers=hdrs)
+    with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
+        sid = json.loads(r.read()).get("sid")
+
+    elapsed = 0
+    state = "UNKNOWN"
+    while elapsed < timeout:
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+        status_url = f"{base_url}/services/search/jobs/{sid}?output_mode=json"
+        req = urllib.request.Request(
+            status_url, headers={"Authorization": f"Basic {creds}"}
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as r:
+            content = json.loads(r.read())["entry"][0]["content"]
+        state = content.get("dispatchState", "UNKNOWN")
+        result_count = content.get("resultCount", 0)
+        print(f"  [{elapsed}s] {state} — {result_count} results", flush=True)
+        if state in ("DONE", "FAILED"):
+            break
+
+    return state
+
+
 def _add_sample_data(i):
     """Adds sample jsonl OTel data and associated electricity maps data,
     with all timestamps rebased so the end of the dataset lands at the
@@ -851,3 +903,47 @@ d = _get_spl_from_file("Summarize Electricity CO2e_kWh V1.0.txt")
 p = {"is_scheduled": True, "cron_schedule": "24 * * * *", "search": d}
 # rename_saved_search(s,'Summarize Asset CO2e & kW V1.0','Summarize Asset CO2e & kW V1.0-old')
 update_saved_search(s, "Summarize Electricity CO2e/kWh V1.0", p)
+
+
+# Step 8 - Trigger both summary searches immediately so the dashboards have
+# data without waiting for the next scheduled runs (:23 and :24 past the hour).
+print(
+    "\nTriggering 'Summarize Asset CO2e & kW V1.0' to populate asset metrics..."
+)
+state1 = dispatch_saved_search(i, "Summarize Asset CO2e & kW V1.0")
+if state1 == "DONE":
+    print("  Asset CO2e & kW summary complete.")
+else:
+    print(
+        f"  Warning: asset summary search finished with state '{state1}'. "
+        "Asset dashboard data may be incomplete."
+    )
+
+print(
+    "\nTriggering 'Summarize Electricity CO2e/kWh V1.0' to populate location "
+    "intensity metrics (required for the Potential CO\u2082e Savings dashboard)..."
+)
+state2 = dispatch_saved_search(i, "Summarize Electricity CO2e/kWh V1.0")
+if state2 == "DONE":
+    print("  Electricity CO2e/kWh summary complete.")
+else:
+    print(
+        f"  Warning: electricity summary search finished with state '{state2}'. "
+        "Location savings dashboard data may be incomplete."
+    )
+
+if state1 == "DONE" and state2 == "DONE":
+    print(
+        f"\nSetup complete. All dashboards are ready:"
+        f"\n  Overview : http://{i['host']}:8000/en-US/app/Sustainability_Toolkit/carbon_intensity_overview"
+        f"\n  Savings  : http://{i['host']}:8000/en-US/app/Sustainability_Toolkit/potential_coe_savings_from_location_changes"
+    )
+else:
+    print(
+        "\nSetup finished with warnings — check the search logs in Splunk for details."
+    )
+else:
+    print(
+        f"Warning: summary search finished with state '{final_state}'. "
+        "Dashboard data may be incomplete — check the search logs in Splunk."
+    )
