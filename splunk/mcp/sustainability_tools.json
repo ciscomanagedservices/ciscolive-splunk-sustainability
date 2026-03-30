@@ -5,7 +5,8 @@
   "author": "CiscoLive BRKGRN-1022",
   "tools": [
     {
-      "name": "get_asset_co2e",
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_asset_co2e",
+      "name": "Sustainability_Toolkit_get_asset_co2e",
       "title": "get_asset_co2e",
       "description": "Get electricity-related CO2e emissions per IT asset, ranked highest to lowest. Returns average CO2 equivalent (kg per 10 minutes) from electricity consumption for each asset, along with site, country, and hardware model. Use this to answer questions like 'which asset emits the most carbon?', 'how much CO2e does the Poland DC generate?', or 'rank my servers by carbon emissions'.",
       "category": "sustainability",
@@ -24,7 +25,8 @@
       ]
     },
     {
-      "name": "get_asset_embodied_vs_operational_co2e",
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_asset_embodied_vs_operational_co2e",
+      "name": "Sustainability_Toolkit_get_asset_embodied_vs_operational_co2e",
       "title": "get_asset_embodied_vs_operational_co2e",
       "description": "Compare embodied carbon (manufacturing) vs operational electricity CO2e for each IT asset. Embodied CO2e is the carbon emitted to manufacture the hardware, amortized over its lifetime; operational CO2e comes from electricity consumption during use. Use this to answer 'what percentage of my carbon footprint is from manufacturing vs electricity use?', 'which type dominates - embodied or operational carbon?', or 'show me the full lifecycle carbon breakdown'.",
       "category": "sustainability",
@@ -43,7 +45,8 @@
       ]
     },
     {
-      "name": "get_electricity_carbon_intensity",
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_electricity_carbon_intensity",
+      "name": "Sustainability_Toolkit_get_electricity_carbon_intensity",
       "title": "get_electricity_carbon_intensity",
       "description": "Get the carbon intensity of electricity grids (gCO2e per kWh) for each geographic zone where IT assets are deployed. Lower values mean cleaner electricity. Use this to answer 'which location has the cleanest electricity grid?', 'how does Poland compare to Switzerland for grid carbon intensity?', or 'what is the carbon intensity of the German electricity grid?'",
       "category": "sustainability",
@@ -62,7 +65,8 @@
       ]
     },
     {
-      "name": "get_site_co2e_summary",
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_site_co2e_summary",
+      "name": "Sustainability_Toolkit_get_site_co2e_summary",
       "title": "get_site_co2e_summary",
       "description": "Get total electricity-related CO2e emissions aggregated by site (data center or factory location), ranked highest to lowest. Use this to answer 'which site has the highest carbon footprint?', 'how do my three data center sites compare in total emissions?', or 'what fraction of emissions comes from the Poland data center?'",
       "category": "sustainability",
@@ -81,7 +85,8 @@
       ]
     },
     {
-      "name": "get_co2e_savings_potential",
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_co2e_savings_potential",
+      "name": "Sustainability_Toolkit_get_co2e_savings_potential",
       "title": "get_co2e_savings_potential",
       "description": "Estimate the potential CO2e savings if each site's workloads were migrated to the cleanest available electricity grid (Switzerland / Zone CH at ~72 gCO2e/kWh). Shows current per-site emissions, best-case emissions at Zone/CH, absolute savings, and percentage savings. Use this to answer 'how much CO2e could I save by moving Poland DC to Switzerland?', 'which migration would have the biggest carbon impact?', or 'what is the best-case carbon reduction if I optimize workload placement?'",
       "category": "sustainability",
