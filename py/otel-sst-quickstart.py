@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.5 - 30-mar-2026 - Write MAX_DAYS_HENCE=14 to TA-electricity-carbon-intensity props.conf.
 # v1.4 - 27-mar-2026 - Fix __file__ path bug, add lookup transforms.conf registration, fix power-otel SPL.
 # v1.3 - 27-mar-2026 - Automated Electricity Maps API key config and sample lookup file upload.
 # v1.2 - 27-mar-2026 - Added Splunkbase app check and automated install support.
@@ -740,6 +741,18 @@ settings = {
 }
 
 edit_config(s, config, stanza, settings)
+
+# Step 2b - Extend MAX_DAYS_HENCE for EM:carbonintensity sourcetype so that
+# electricity events with datetime values up to 14 days in the future are
+# indexed with the correct _time instead of being clamped to the current time.
+# Without this, rebased forecast data beyond the default 2-day window is
+# silently mis-timestamped, which breaks the CO2e.electricity calculation.
+_ta_props_dir = Path("/opt/splunk/etc/apps/TA-electricity-carbon-intensity/local")
+_ta_props_dir.mkdir(parents=True, exist_ok=True)
+_ta_props_file = _ta_props_dir / "props.conf"
+_props_content = "[EM:carbonintensity]\nMAX_DAYS_HENCE = 14\n"
+_ta_props_file.write_text(_props_content)
+print(f"Written MAX_DAYS_HENCE = 14 to {_ta_props_file}")
 
 print("Switching back to the Sustainability Toolkit app context")
 i["app"] = "Sustainability_Toolkit"
