@@ -5,7 +5,7 @@
       "type": "local",
       "command": [
         "python3",
-        "/Users/sholl/Documents/!Work/BRKGRN-1022-Splunk/ciscolive-splunk-sustainability/splunk/mcp/splunk_mcp_proxy.py"
+        "splunk/mcp/splunk_mcp_proxy.py"
       ],
       "enabled": true,
       "environment": {
