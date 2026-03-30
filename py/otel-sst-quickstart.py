@@ -654,6 +654,14 @@ def _add_sample_data(i):
 i = get_input_for_auth()
 s = splunk_auth(i)
 
+# Ask whether the user wants to set up the optional MCP Server integration.
+_setup_mcp = input(
+    "\nThe Splunk MCP Server (optional) enables AI assistants such as OpenCode or Claude "
+    "Desktop to query your sustainability data using natural language.\n"
+    "Do you want to install and set up the Splunk MCP Server? (y/n): "
+).strip().lower()
+setup_mcp = _setup_mcp in ("y", "yes")
+
 # Check that required (and optional) apps are installed, offering auto-install if not
 REQUIRED_APPS = [
     {
@@ -675,12 +683,6 @@ REQUIRED_APPS = [
         "required": False,
     },
     {
-        "display_name": "Splunk MCP Server",
-        "folder_name": "Splunk_MCP_Server",
-        "splunkbase_id": 7582,
-        "required": False,
-    },
-    {
         "display_name": "Machine Learning Toolkit",
         "folder_name": "Splunk_ML_Toolkit",
         "splunkbase_id": 2890,
@@ -695,6 +697,16 @@ REQUIRED_APPS = [
         "required": False,
     },
 ]
+
+if setup_mcp:
+    REQUIRED_APPS.append(
+        {
+            "display_name": "Splunk MCP Server",
+            "folder_name": "Splunk_MCP_Server",
+            "splunkbase_id": 7582,
+            "required": False,
+        }
+    )
 
 if not check_and_install_apps(s, REQUIRED_APPS):
     sys.exit(1)
