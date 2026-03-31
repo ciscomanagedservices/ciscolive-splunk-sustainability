@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.7 - 31-mar-2026 - Auto-install missing Python dependencies; auto-open dashboard on completion.
 # v1.6 - 30-mar-2026 - Dispatch summary search at end of setup so dashboard is immediately populated.
 # v1.5 - 30-mar-2026 - Write MAX_DAYS_HENCE=14 to TA-electricity-carbon-intensity props.conf.
 # v1.4 - 27-mar-2026 - Fix __file__ path bug, add lookup transforms.conf registration, fix power-otel SPL.
@@ -16,7 +17,46 @@
 # those that don't have an active OpenTelemetry pipeline to ingest from.
 # v1.0 - 17-may-2024 - Initial release. sholl@cisco.com
 
-# Install this dependency via 'pip3 install splunk-sdk'
+# ---------------------------------------------------------------------------
+# Dependency bootstrap — auto-install any missing third-party packages before
+# the rest of the script tries to import them.
+# ---------------------------------------------------------------------------
+import importlib
+import subprocess
+import sys
+
+_REQUIRED_PACKAGES = {
+    # import_name : pip_package_name
+    "splunklib": "splunk-sdk",
+}
+
+_missing = []
+for _import_name, _pip_name in _REQUIRED_PACKAGES.items():
+    if importlib.util.find_spec(_import_name) is None:
+        _missing.append((_import_name, _pip_name))
+
+if _missing:
+    print("Installing missing Python dependencies...")
+    for _import_name, _pip_name in _missing:
+        print(f"  pip install {_pip_name} ...", end=" ", flush=True)
+        _result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", _pip_name],
+            capture_output=True,
+            text=True,
+        )
+        if _result.returncode == 0:
+            print("OK")
+        else:
+            print("FAILED")
+            print(_result.stderr.strip())
+            print(
+                f"\nERROR: Could not install '{_pip_name}'. "
+                f"Please run:  pip3 install {_pip_name}\nthen re-run this script."
+            )
+            sys.exit(1)
+    print()
+# ---------------------------------------------------------------------------
+
 import splunklib.client as client
 import splunklib.results as results
 import urllib.request
@@ -28,10 +68,10 @@ import os
 from pathlib import Path
 import json
 import shutil
-import sys
 import ssl
 import base64
 import time
+import webbrowser
 
 
 def _get_spl_from_file(filename):
@@ -107,31 +147,43 @@ def splunk_auth(auth_input):
 
 
 def create_macro(service, macro_name, definition):
-    """Adds a new search macro to Splunk, when provided an active splunk service session,
-    macro name, and macro definition."""
+    """Creates or updates a search macro. If the macro already exists its
+    definition is updated in place, making this call idempotent."""
     try:
-        service.post("properties/macros", __stanza=macro_name)
-        service.post(f"properties/macros/{macro_name}", definition=definition)
-        print(f"Search macro {macro_name} has been created.")
-    except:
-        print(f"ERROR: Search macro {macro_name} could not be created.")
+        existing = service.confs["macros"]
+        if macro_name in existing:
+            existing[macro_name].update(definition=definition).refresh()
+            print(f"Search macro '{macro_name}' already exists — definition updated.")
+        else:
+            service.post("properties/macros", __stanza=macro_name)
+            service.post(f"properties/macros/{macro_name}", definition=definition)
+            print(f"Search macro '{macro_name}' created.")
+    except Exception as e:
+        print(f"ERROR: Search macro '{macro_name}' could not be created/updated: {e}")
         raise
 
 
 def rename_macro(service, macro_name_old, macro_name_new):
-    """Renames an existing search macro in Splunk, when provided an active splunk service session,
-    and the old & new macro names."""
+    """Copies an existing macro to a new name. If the destination already
+    exists the copy is skipped (idempotent). If the source does not exist
+    the rename is skipped with a warning rather than crashing."""
+    existing = service.confs["macros"]
+    if macro_name_new in existing:
+        print(f"Search macro '{macro_name_new}' already exists — skipping rename.")
+        return
+    if macro_name_old not in existing:
+        print(
+            f"WARNING: Source macro '{macro_name_old}' not found — skipping rename to '{macro_name_new}'."
+        )
+        return
     try:
         definition = service.get(f"properties/macros/{macro_name_old}/definition")[
             "body"
         ]
-    except:
-        print(
-            f"ERROR: Could not find and get propertes of search macro {macro_name_old}. Rename was unsuccessful."
-        )
+    except Exception as e:
+        print(f"ERROR: Could not read macro '{macro_name_old}': {e}")
         raise
     create_macro(service=service, macro_name=macro_name_new, definition=definition)
-    # delete_macro(service=service,macro_name=macro_name_old)
 
 
 def delete_macro(service, macro_name):
@@ -594,8 +646,34 @@ def dispatch_saved_search(auth_input, search_name, poll_interval=5, timeout=300)
 def _add_sample_data(i):
     """Adds sample jsonl OTel data and associated electricity maps data,
     with all timestamps rebased so the end of the dataset lands at the
-    current time. Assumes sample file locations from git repo."""
+    current time. Assumes sample file locations from git repo.
+
+    Checks whether data already exists in the target indexes before posting
+    to avoid duplicating events on a re-run. The user is prompted to confirm
+    if existing data is detected."""
     import datetime, tempfile, os
+
+    # Check whether sample data already exists in the otel index.
+    _s_check = splunk_auth(i)
+    try:
+        _job = _s_check.jobs.oneshot("search index=otel | head 1", count=1)
+        _existing = len(list(results.JSONResultsReader(_job))) > 0
+    except Exception:
+        _existing = False
+
+    if _existing:
+        _reload = (
+            input(
+                "\nSample data already exists in the 'otel' index. "
+                "Re-loading will add duplicate events.\n"
+                "Do you want to reload the sample data anyway? (y/n): "
+            )
+            .strip()
+            .lower()
+        )
+        if _reload not in ("y", "yes"):
+            print("Skipping sample data load.")
+            return
 
     # Compute offset: shift data so OTel max timestamp (2024-05-22 16:00:28 UTC)
     # lands at the current time.
@@ -836,10 +914,18 @@ edit_config(s, config, stanza, settings)
 if load_data in ("y", "yes"):
     _ta_props_dir = Path("/opt/splunk/etc/apps/TA-electricity-carbon-intensity/local")
     _ta_props_file = _ta_props_dir / "props.conf"
-    _props_content = "[EM:carbonintensity]\nMAX_DAYS_HENCE = 14\n"
     try:
+        import configparser
+
         _ta_props_dir.mkdir(parents=True, exist_ok=True)
-        _ta_props_file.write_text(_props_content)
+        _cfg = configparser.ConfigParser()
+        if _ta_props_file.exists():
+            _cfg.read(str(_ta_props_file))
+        if not _cfg.has_section("EM:carbonintensity"):
+            _cfg.add_section("EM:carbonintensity")
+        _cfg.set("EM:carbonintensity", "MAX_DAYS_HENCE", "14")
+        with open(str(_ta_props_file), "w") as _fh:
+            _cfg.write(_fh)
         print(f"Written MAX_DAYS_HENCE = 14 to {_ta_props_file}")
     except Exception as e:
         print(f"ERROR writing {_ta_props_file}: {e}")
@@ -867,9 +953,15 @@ if load_data in ("y", "yes"):
     )
     _lookup_dst_dir.mkdir(parents=True, exist_ok=True)
     for _csv in ("otel_sample_cmdb.csv", "otel_sample_sites.csv"):
-        shutil.copy(str(_lookup_src_dir / _csv), str(_lookup_dst_dir / _csv))
-        print(f"Copied {_csv} to {_lookup_dst_dir}")
-    print("Sample lookup files loaded.")
+        _dst = _lookup_dst_dir / _csv
+        if _dst.exists():
+            print(
+                f"Lookup file '{_csv}' already exists — skipping copy to preserve any edits."
+            )
+        else:
+            shutil.copy(str(_lookup_src_dir / _csv), str(_dst))
+            print(f"Copied {_csv} to {_lookup_dst_dir}")
+    print("Sample lookup files ready.")
 
 # Register lookup transform definitions so the 'lookup' and 'inputlookup' commands
 # can find the CSV files by name (Splunk requires a transforms.conf stanza).
@@ -948,11 +1040,14 @@ else:
     )
 
 if state1 == "DONE" and state2 == "DONE":
-    print(
-        f"\nSetup complete. All dashboards are ready:"
-        f"\n  Overview : http://{i['host']}:8000/en-US/app/Sustainability_Toolkit/carbon_intensity_overview"
-        f"\n  Savings  : http://{i['host']}:8000/en-US/app/Sustainability_Toolkit/potential_coe_savings_from_location_changes"
+    _dashboard_url = (
+        f"http://{i['host']}:8000/en-US/app/Sustainability_Toolkit/coe_amp_energy"
     )
+    print(
+        "\nSetup complete. Press Enter to open the Sustainability Toolkit dashboard in your browser..."
+    )
+    input()
+    webbrowser.open(_dashboard_url)
 else:
     print(
         "\nSetup finished with warnings — check the search logs in Splunk for details."
