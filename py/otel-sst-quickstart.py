@@ -727,17 +727,35 @@ create_index(
     s, "sustainability_toolkit_summary_electricity_metrics", index_type="metric"
 )
 
-# Step 1b - See if the user wants the cold snapshot sample OTel data loaded in
-# Note: this script needs to be run on the splunk server itself to place a file,
-# otherwise creating the data file will fail and you will have to copy it manually.
+# Step 1b - See if the user wants the cold snapshot sample OTel data loaded in.
+# Loading sample data requires this script to be running directly on the Splunk
+# server, because it writes files to the local filesystem under /opt/splunk/.
 
-load_data = input(
-    "\nIf you do not have an active OpenTelemetry data pipeline yet, we can load example \
-OpenTelemetry data from Cisco Intersight into a splunk index for you. \
-\n\nDo you want to load the example data? (y/n): "
+load_data = (
+    input(
+        "\nIf you do not have an active OpenTelemetry data pipeline yet, we can load example "
+        "OpenTelemetry data from Cisco Intersight into a Splunk index for you.\n"
+        "NOTE: Loading sample data requires this script to be run directly on the Splunk "
+        "server — it writes files to the local filesystem.\n\n"
+        "Do you want to load the example data? (y/n): "
+    )
+    .strip()
+    .lower()
 )
 
-if load_data.lower() == "y" or load_data.lower() == "yes":
+if load_data in ("y", "yes"):
+    _on_server = (
+        input("\nAre you running this script directly on the Splunk server? (y/n): ")
+        .strip()
+        .lower()
+    )
+    if _on_server not in ("y", "yes"):
+        print(
+            "\nThis step cannot continue remotely. Please log in to the Splunk server "
+            "and re-run this script from there to load the sample data.\n"
+            "Exiting."
+        )
+        sys.exit(0)
     _add_sample_data(i)
 
 #################################
@@ -810,17 +828,21 @@ settings = {
 
 edit_config(s, config, stanza, settings)
 
-# Step 2b - Extend MAX_DAYS_HENCE for EM:carbonintensity sourcetype so that
-# electricity events with datetime values up to 14 days in the future are
-# indexed with the correct _time instead of being clamped to the current time.
-# Without this, rebased forecast data beyond the default 2-day window is
-# silently mis-timestamped, which breaks the CO2e.electricity calculation.
-_ta_props_dir = Path("/opt/splunk/etc/apps/TA-electricity-carbon-intensity/local")
-_ta_props_dir.mkdir(parents=True, exist_ok=True)
-_ta_props_file = _ta_props_dir / "props.conf"
-_props_content = "[EM:carbonintensity]\nMAX_DAYS_HENCE = 14\n"
-_ta_props_file.write_text(_props_content)
-print(f"Written MAX_DAYS_HENCE = 14 to {_ta_props_file}")
+# Step 2b - Extend MAX_DAYS_HENCE for EM:carbonintensity sourcetype.
+# Only needed when loading sample data: the sample data has rebased timestamps
+# that may fall more than 2 days in the future (Splunk's default limit).
+# Without this, Splunk silently clamps those event timestamps to "now", which
+# breaks the CO2e.electricity calculation. Not required for a live pipeline.
+if load_data in ("y", "yes"):
+    _ta_props_dir = Path("/opt/splunk/etc/apps/TA-electricity-carbon-intensity/local")
+    _ta_props_file = _ta_props_dir / "props.conf"
+    _props_content = "[EM:carbonintensity]\nMAX_DAYS_HENCE = 14\n"
+    try:
+        _ta_props_dir.mkdir(parents=True, exist_ok=True)
+        _ta_props_file.write_text(_props_content)
+        print(f"Written MAX_DAYS_HENCE = 14 to {_ta_props_file}")
+    except Exception as e:
+        print(f"ERROR writing {_ta_props_file}: {e}")
 
 print("Switching back to the Sustainability Toolkit app context")
 i["app"] = "Sustainability_Toolkit"
@@ -836,39 +858,18 @@ rename_macro(s, "sites-lookup-name", "sites-lookup-name-old")
 create_macro(s, "sites-lookup-name", "otel_sample_sites.csv")
 
 _lookup_dst_dir = Path("/opt/splunk/etc/apps/Sustainability_Toolkit/lookups")
-_lookup_dst_dir.mkdir(parents=True, exist_ok=True)
 
-if load_data.lower() in ("y", "yes"):
-    # User loaded sample data — copy the matching sample lookup CSVs automatically.
+if load_data in ("y", "yes"):
+    # User loaded sample data and confirmed they are on the server — copy the
+    # matching sample lookup CSVs directly into the Splunk app directory.
     _lookup_src_dir = (
         Path(os.path.dirname(os.path.realpath(__file__))).parent / "splunk" / "lookups"
     )
+    _lookup_dst_dir.mkdir(parents=True, exist_ok=True)
     for _csv in ("otel_sample_cmdb.csv", "otel_sample_sites.csv"):
         shutil.copy(str(_lookup_src_dir / _csv), str(_lookup_dst_dir / _csv))
         print(f"Copied {_csv} to {_lookup_dst_dir}")
     print("Sample lookup files loaded.")
-else:
-    # No sample data — create stub CSVs with headers only so the lookup files exist.
-    _cmdb_header = (
-        "Asset IP,Site,Country,Location,Application,Embodied CO2e,Years Lifetime\n"
-    )
-    _sites_header = "Site,Electricity CO2e per kWh Source,Electricity CO2e per kWh Source Location Code,Electricity Cost Source,Latitude,Longitude\n"
-    for _csv, _header in (
-        ("otel_sample_cmdb.csv", _cmdb_header),
-        ("otel_sample_sites.csv", _sites_header),
-    ):
-        _dst = _lookup_dst_dir / _csv
-        if not _dst.exists():
-            _dst.write_text(_header)
-            print(f"Created stub lookup file: {_dst}")
-        else:
-            print(f"Lookup file already exists, skipping: {_dst}")
-    print(
-        "\nACTION REQUIRED: Edit the two lookup files to match your environment:\n"
-        f"  {_lookup_dst_dir}/otel_sample_cmdb.csv  — map OTel hostnames to site/asset info\n"
-        f"  {_lookup_dst_dir}/otel_sample_sites.csv — map site names to location and carbon source\n"
-        "Use the Splunk App for Lookup File Editing (lookup_editor) to edit them via the UI."
-    )
 
 # Register lookup transform definitions so the 'lookup' and 'inputlookup' commands
 # can find the CSV files by name (Splunk requires a transforms.conf stanza).
@@ -955,4 +956,27 @@ if state1 == "DONE" and state2 == "DONE":
 else:
     print(
         "\nSetup finished with warnings — check the search logs in Splunk for details."
+    )
+
+if load_data not in ("y", "yes"):
+    print(
+        "\n*** ACTION REQUIRED — populate the lookup files on the Splunk server ***\n"
+        "Because you did not load sample data, you must populate two lookup files\n"
+        "with the hostnames and site information from your own OTel data pipeline\n"
+        "before the dashboards will show any results.\n\n"
+        "On the Splunk server, edit these two files:\n\n"
+        "  /opt/splunk/etc/apps/Sustainability_Toolkit/lookups/otel_sample_cmdb.csv\n"
+        "    — one row per OTel asset hostname; columns:\n"
+        "      Asset IP, Site, Country, Location, Application, Embodied CO2e, Years Lifetime\n\n"
+        "  /opt/splunk/etc/apps/Sustainability_Toolkit/lookups/otel_sample_sites.csv\n"
+        "    — one row per site; columns:\n"
+        "      Site, Electricity CO2e per kWh Source, Electricity CO2e per kWh Source Location Code,\n"
+        "      Electricity Cost Source, Latitude, Longitude\n\n"
+        "You can edit these files directly on the server, or use the Splunk App for\n"
+        "Lookup File Editing (lookup_editor) in the Splunk web UI.\n"
+        "Once the files are populated, re-trigger the two summary searches to populate\n"
+        "the dashboards:\n\n"
+        "  'Summarize Asset CO2e & kW V1.0'\n"
+        "  'Summarize Electricity CO2e/kWh V1.0'\n"
+        "\nThese can be found under Settings > Searches, Reports and Alerts in Splunk."
     )
