@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.9 - 31-mar-2026 - Auto-install OpenCode (and Node.js/npm if needed) if not on PATH.
 # v1.8 - 31-mar-2026 - Write opencode.json from user-supplied Splunk credentials when MCP is enabled.
 # v1.7 - 31-mar-2026 - Auto-install missing Python dependencies; auto-open dashboard on completion.
 # v1.6 - 30-mar-2026 - Dispatch summary search at end of setup so dashboard is immediately populated.
@@ -1090,6 +1091,58 @@ if True:
         "  opencode\n"
         "Then ask questions like 'Which site has the highest carbon footprint?'"
     )
+
+# ---------------------------------------------------------------------------
+# Auto-install OpenCode if it is not already on the PATH.
+# Requires Node.js/npm; installs those first via apt if missing.
+# ---------------------------------------------------------------------------
+import shutil as _shutil
+
+
+def _run(cmd, desc):
+    print(f"  {desc}...", end=" ", flush=True)
+    _r = subprocess.run(cmd, capture_output=True, text=True)
+    if _r.returncode == 0:
+        print("OK")
+    else:
+        print("FAILED")
+        print(_r.stderr.strip())
+    return _r.returncode == 0
+
+
+if _shutil.which("opencode") is None:
+    print("\nOpenCode is not installed. Installing now...")
+
+    _npm_ok = _shutil.which("npm") is not None
+    _node_ok = _shutil.which("node") is not None
+
+    if not _node_ok or not _npm_ok:
+        print("  Node.js / npm not found — installing via apt...")
+        _run(["apt-get", "update", "-y"], "apt-get update")
+        _run(
+            ["apt-get", "install", "-y", "nodejs", "npm"],
+            "apt-get install nodejs npm",
+        )
+
+    if _shutil.which("npm") is not None:
+        _run(["npm", "install", "-g", "opencode-ai"], "npm install -g opencode-ai")
+        if _shutil.which("opencode") is not None:
+            print("  OpenCode installed successfully.")
+        else:
+            print(
+                "\n  WARNING: OpenCode installation may have succeeded but 'opencode' "
+                "is not yet on the PATH.\n"
+                "  You may need to open a new terminal session or run:\n"
+                '    export PATH="$(npm root -g)/.bin:$PATH"'
+            )
+    else:
+        print(
+            "\n  WARNING: npm is still not available after attempting install.\n"
+            "  Please install Node.js and npm manually, then run:\n"
+            "    npm install -g opencode-ai"
+        )
+else:
+    print(f"\nOpenCode is already installed: {_shutil.which('opencode')}")
 
 if load_data not in ("y", "yes"):
     print(
