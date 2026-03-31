@@ -1,0 +1,108 @@
+{
+  "name": "Sustainability Toolkit Tools",
+  "description": "Custom MCP tools for querying Cisco CiscoLive sustainability demo data in Splunk (BRKGRN-1022)",
+  "version": "1.0.0",
+  "author": "CiscoLive BRKGRN-1022",
+  "tools": [
+    {
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_asset_co2e",
+      "name": "Sustainability_Toolkit_get_asset_co2e",
+      "title": "get_asset_co2e",
+      "description": "Get electricity-related CO2e emissions per IT asset, ranked highest to lowest. Returns average CO2 equivalent (kg per 10 minutes) from electricity consumption for each asset, along with site, country, and hardware model. Use this to answer questions like 'which asset emits the most carbon?', 'how much CO2e does the Poland DC generate?', or 'rank my servers by carbon emissions'.",
+      "category": "sustainability",
+      "version": "1.0.0",
+      "tags": ["sustainability", "co2e", "carbon", "electricity", "emissions", "assets"],
+      "time_range": true,
+      "spl": "| mstats avg(asset.CO2e.electricity) AS avg_co2e WHERE index=sustainability_toolkit_summary_asset_metrics BY \"Asset IP\", Application, Site, Country span=30d | eval \"Avg CO2e from Electricity (kg/10min)\"=round(avg_co2e, 6) | sort - \"Avg CO2e from Electricity (kg/10min)\" | rename \"Asset IP\" AS Asset | fields Asset, Application, Site, Country, \"Avg CO2e from Electricity (kg/10min)\"",
+      "arguments": [],
+      "examples": [
+        {
+          "name": "Highest-emission assets",
+          "description": "Rank all IT assets by electricity-related CO2e emissions",
+          "arguments": {},
+          "expected_use": "Find which IT assets contribute most to the carbon footprint"
+        }
+      ]
+    },
+    {
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_asset_embodied_vs_operational_co2e",
+      "name": "Sustainability_Toolkit_get_asset_embodied_vs_operational_co2e",
+      "title": "get_asset_embodied_vs_operational_co2e",
+      "description": "Compare embodied carbon (manufacturing) vs operational electricity CO2e for each IT asset. Embodied CO2e is the carbon emitted to manufacture the hardware, amortized over its lifetime; operational CO2e comes from electricity consumption during use. Use this to answer 'what percentage of my carbon footprint is from manufacturing vs electricity use?', 'which type dominates - embodied or operational carbon?', or 'show me the full lifecycle carbon breakdown'.",
+      "category": "sustainability",
+      "version": "1.0.0",
+      "tags": ["sustainability", "co2e", "carbon", "embodied", "operational", "lifecycle"],
+      "time_range": true,
+      "spl": "| mstats avg(asset.CO2e.electricity) AS avg_operational avg(asset.CO2e.embodied) AS avg_embodied WHERE index=sustainability_toolkit_summary_asset_metrics BY \"Asset IP\", Application, Site, Country span=30d | eval total=avg_operational+avg_embodied | eval \"Operational CO2e (kg/10min)\"=round(avg_operational, 6) | eval \"Embodied CO2e (kg/10min)\"=round(avg_embodied, 6) | eval \"% Operational\"=round(avg_operational/total*100,1) | eval \"% Embodied\"=round(avg_embodied/total*100,1) | sort - avg_operational | rename \"Asset IP\" AS Asset | fields Asset, Application, Site, Country, \"Operational CO2e (kg/10min)\", \"Embodied CO2e (kg/10min)\", \"% Operational\", \"% Embodied\"",
+      "arguments": [],
+      "examples": [
+        {
+          "name": "Embodied vs operational carbon split",
+          "description": "Compare manufacturing carbon vs electricity carbon per asset",
+          "arguments": {},
+          "expected_use": "Understand the full lifecycle carbon profile of the IT fleet"
+        }
+      ]
+    },
+    {
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_electricity_carbon_intensity",
+      "name": "Sustainability_Toolkit_get_electricity_carbon_intensity",
+      "title": "get_electricity_carbon_intensity",
+      "description": "Get the carbon intensity of electricity grids (gCO2e per kWh) for each geographic zone where IT assets are deployed. Lower values mean cleaner electricity. Use this to answer 'which location has the cleanest electricity grid?', 'how does Poland compare to Switzerland for grid carbon intensity?', or 'what is the carbon intensity of the German electricity grid?'",
+      "category": "sustainability",
+      "version": "1.0.0",
+      "tags": ["sustainability", "electricity", "carbon-intensity", "grid", "zones"],
+      "time_range": true,
+      "spl": "| mstats avg(\"electricity.CO2e per kWh\") AS avg_intensity WHERE index=sustainability_toolkit_summary_electricity_metrics BY \"Location Code\", \"Location Name\" span=30d | eval \"Grid Carbon Intensity (gCO2e/kWh)\"=round(avg_intensity, 1) | sort - \"Grid Carbon Intensity (gCO2e/kWh)\" | fields \"Location Name\", \"Location Code\", \"Grid Carbon Intensity (gCO2e/kWh)\"",
+      "arguments": [],
+      "examples": [
+        {
+          "name": "Grid intensity ranking",
+          "description": "Rank all electricity grid zones by carbon intensity, dirtiest first",
+          "arguments": {},
+          "expected_use": "Identify the cleanest and dirtiest electricity grids in the deployment"
+        }
+      ]
+    },
+    {
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_site_co2e_summary",
+      "name": "Sustainability_Toolkit_get_site_co2e_summary",
+      "title": "get_site_co2e_summary",
+      "description": "Get total electricity-related CO2e emissions aggregated by site (data center or factory location), ranked highest to lowest. Use this to answer 'which site has the highest carbon footprint?', 'how do my three data center sites compare in total emissions?', or 'what fraction of emissions comes from the Poland data center?'",
+      "category": "sustainability",
+      "version": "1.0.0",
+      "tags": ["sustainability", "co2e", "carbon", "sites", "datacenter", "comparison"],
+      "time_range": true,
+      "spl": "| mstats sum(asset.CO2e.electricity) AS total_co2e avg(asset.CO2e.electricity) AS avg_co2e_per_asset WHERE index=sustainability_toolkit_summary_asset_metrics BY Site, Country span=30d | eval \"Total CO2e from Electricity (kg/10min)\"=round(total_co2e, 5) | eval \"Avg per Asset (kg/10min)\"=round(avg_co2e_per_asset, 6) | sort - \"Total CO2e from Electricity (kg/10min)\" | fields Site, Country, \"Total CO2e from Electricity (kg/10min)\", \"Avg per Asset (kg/10min)\"",
+      "arguments": [],
+      "examples": [
+        {
+          "name": "Site emissions ranking",
+          "description": "Compare total CO2e across all sites, highest first",
+          "arguments": {},
+          "expected_use": "Identify which data center or factory drives the most carbon emissions"
+        }
+      ]
+    },
+    {
+      "_key": "Sustainability_Toolkit:Sustainability_Toolkit_get_co2e_savings_potential",
+      "name": "Sustainability_Toolkit_get_co2e_savings_potential",
+      "title": "get_co2e_savings_potential",
+      "description": "Estimate the potential CO2e savings if each site's workloads were migrated to the cleanest available electricity grid (Switzerland / Zone CH at ~72 gCO2e/kWh). Shows current per-site emissions, best-case emissions at Zone/CH, absolute savings, and percentage savings. Use this to answer 'how much CO2e could I save by moving Poland DC to Switzerland?', 'which migration would have the biggest carbon impact?', or 'what is the best-case carbon reduction if I optimize workload placement?'",
+      "category": "sustainability",
+      "version": "1.0.0",
+      "tags": ["sustainability", "co2e", "savings", "optimization", "migration", "workload-placement"],
+      "time_range": true,
+      "spl": "| mstats avg(asset.CO2e.electricity) AS co2e_elec avg(asset.electricity.kW.mean) AS avg_kw WHERE index=sustainability_toolkit_summary_asset_metrics BY Site span=30d | lookup sample_sites.csv Site OUTPUTNEW \"Electricity CO2e per kWh Source\" \"Electricity CO2e per kWh Source Location Code\" | eval LocationCode=\"Electricity CO2e per kWh Source\".\"/\".\"Electricity CO2e per kWh Source Location Code\" | join type=left LocationCode [ | mstats avg(\"electricity.CO2e per kWh\") AS mean_intensity WHERE index=sustainability_toolkit_summary_electricity_metrics BY \"Location Code\" | eval mean_intensity_kg=round(mean_intensity/1000, 5) | rename \"Location Code\" AS LocationCode ] | eval kWh_per_10min=avg_kw*(10/60) | eval best_intensity_kg=0.07232 | eval co2e_at_best=kWh_per_10min*best_intensity_kg | eval savings=co2e_elec - co2e_at_best | eval savings_pct=round(savings/co2e_elec*100, 1) | eval \"Best Location\"=\"Switzerland (Zone/CH)\" | where savings_pct > 1 | sort - savings_pct | eval \"Current CO2e (kg/10min)\"=round(co2e_elec, 6) | eval \"Current Grid Intensity (kg/kWh)\"=round(mean_intensity_kg, 5) | eval \"CO2e Savings (kg/10min)\"=round(savings, 6) | eval \"Savings %\"=savings_pct | fields Site, \"Current CO2e (kg/10min)\", \"Current Grid Intensity (kg/kWh)\", \"Best Location\", \"CO2e Savings (kg/10min)\", \"Savings %\"",
+      "arguments": [],
+      "examples": [
+        {
+          "name": "Workload migration savings by site",
+          "description": "Find which sites would benefit most from moving to a cleaner electricity grid",
+          "arguments": {},
+          "expected_use": "Prioritize data center migrations for maximum carbon reduction"
+        }
+      ]
+    }
+  ]
+}

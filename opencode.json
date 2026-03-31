@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "splunk-sustainability": {
+      "type": "local",
+      "command": [
+        "python3",
+        "splunk/mcp/splunk_mcp_proxy.py"
+      ],
+      "enabled": true,
+      "environment": {
+        "SPLUNK_HOST": "198.18.1.100",
+        "SPLUNK_PORT": "8089",
+        "SPLUNK_USER": "admin",
+        "SPLUNK_PASS": "cisco"
+      },
+      "timeout": 60000
+    }
+  }
+}
