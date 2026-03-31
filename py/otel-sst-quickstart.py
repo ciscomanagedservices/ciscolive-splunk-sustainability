@@ -22,6 +22,7 @@
 # the rest of the script tries to import them.
 # ---------------------------------------------------------------------------
 import importlib
+import importlib.util
 import subprocess
 import sys
 
