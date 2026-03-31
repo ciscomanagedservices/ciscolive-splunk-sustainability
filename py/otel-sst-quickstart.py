@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.8 - 31-mar-2026 - Write opencode.json from user-supplied Splunk credentials when MCP is enabled.
 # v1.7 - 31-mar-2026 - Auto-install missing Python dependencies; auto-open dashboard on completion.
 # v1.6 - 30-mar-2026 - Dispatch summary search at end of setup so dashboard is immediately populated.
 # v1.5 - 30-mar-2026 - Write MAX_DAYS_HENCE=14 to TA-electricity-carbon-intensity props.conf.
@@ -96,22 +97,22 @@ def get_input_for_auth():
     """Collects input for Splunk server authentication from the user in CLI.
     Returns a dict for splunk_auth()."""
     i = {"host": None, "port": None, "username": None, "password": None}
-    i["host"] = input("Enter your splunk IP or hostname: ").strip()
+    i["host"] = input("Enter your Splunk IP or hostname [default: 127.0.0.1]: ").strip()
     if not i["host"]:
-        i["host"] = "localhost"
+        i["host"] = "127.0.0.1"
 
-    i["port"] = input("Enter your Splunk management port (usually 8089): ").strip()
+    i["port"] = input("Enter your Splunk management port [default: 8089]: ").strip()
     if i["port"] == "8000":
         print(
-            "INFO: Port 8000 is usually the Splunk Web port to acces the UI, \
-                and not the port used for the management API. \
-                To validate, check what port your Universal Forwarders are sending to."
+            "INFO: Port 8000 is usually the Splunk Web port to access the UI, "
+            "and not the port used for the management API. "
+            "To validate, check what port your Universal Forwarders are sending to."
         )
-        i["port"] = input("Enter your Splunk management port (usually 8089): ").strip()
+        i["port"] = input("Enter your Splunk management port [default: 8089]: ").strip()
     if not i["port"]:
         i["port"] = "8089"
 
-    i["username"] = input("Enter your Splunk username: ").strip()
+    i["username"] = input("Enter your Splunk username [default: admin]: ").strip()
     if not i["username"]:
         i["username"] = "admin"
 
@@ -1049,6 +1050,45 @@ if state1 == "DONE" and state2 == "DONE":
 else:
     print(
         "\nSetup finished with warnings — check the search logs in Splunk for details."
+    )
+
+# ---------------------------------------------------------------------------
+# Write opencode.json so OpenCode can connect to the Splunk MCP Server.
+# The file is written to the repo root (one level above the py/ directory).
+# It uses the same host/port/credentials the user already provided, so they
+# never have to edit the file by hand.
+# Always written regardless of whether the MCP Server app was installed,
+# so the file stays in sync with whatever credentials were entered.
+# ---------------------------------------------------------------------------
+if True:
+    _repo_root = Path(os.path.dirname(os.path.realpath(__file__))).parent
+    _opencode_json_path = _repo_root / "opencode.json"
+    _opencode_config = {
+        "$schema": "https://opencode.ai/config.json",
+        "mcp": {
+            "splunk-sustainability": {
+                "type": "local",
+                "command": ["python3", "splunk/mcp/splunk_mcp_proxy.py"],
+                "enabled": True,
+                "environment": {
+                    "SPLUNK_HOST": i["host"],
+                    "SPLUNK_PORT": str(i["port"]),
+                    "SPLUNK_USER": i["username"],
+                    "SPLUNK_PASS": i["password"],
+                },
+                "timeout": 60000,
+            }
+        },
+    }
+    with open(_opencode_json_path, "w") as _f:
+        json.dump(_opencode_config, _f, indent=2)
+        _f.write("\n")
+    print(
+        f"\nopencode.json written to {_opencode_json_path}\n"
+        "To use OpenCode with your sustainability data:\n"
+        f"  cd {_repo_root}\n"
+        "  opencode\n"
+        "Then ask questions like 'Which site has the highest carbon footprint?'"
     )
 
 if load_data not in ("y", "yes"):
