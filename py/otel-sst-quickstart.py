@@ -72,7 +72,6 @@ import shutil
 import ssl
 import base64
 import time
-import webbrowser
 
 
 def _get_spl_from_file(filename):
@@ -1045,10 +1044,8 @@ if state1 == "DONE" and state2 == "DONE":
         f"http://{i['host']}:8000/en-US/app/Sustainability_Toolkit/coe_amp_energy"
     )
     print(
-        "\nSetup complete. Press Enter to open the Sustainability Toolkit dashboard in your browser..."
+        f"\nSetup complete. Open the Sustainability Toolkit dashboard at:\n\n  {_dashboard_url}\n"
     )
-    input()
-    webbrowser.open(_dashboard_url)
 else:
     print(
         "\nSetup finished with warnings — check the search logs in Splunk for details."
