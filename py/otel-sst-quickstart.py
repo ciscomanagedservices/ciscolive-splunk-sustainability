@@ -1057,8 +1057,10 @@ else:
 # The file is written to the repo root (one level above the py/ directory).
 # It uses the same host/port/credentials the user already provided, so they
 # never have to edit the file by hand.
+# Always written regardless of whether the MCP Server app was installed,
+# so the file stays in sync with whatever credentials were entered.
 # ---------------------------------------------------------------------------
-if setup_mcp:
+if True:
     _repo_root = Path(os.path.dirname(os.path.realpath(__file__))).parent
     _opencode_json_path = _repo_root / "opencode.json"
     _opencode_config = {
