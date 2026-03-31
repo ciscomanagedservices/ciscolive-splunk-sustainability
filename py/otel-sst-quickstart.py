@@ -655,11 +655,15 @@ i = get_input_for_auth()
 s = splunk_auth(i)
 
 # Ask whether the user wants to set up the optional MCP Server integration.
-_setup_mcp = input(
-    "\nThe Splunk MCP Server (optional) enables AI assistants such as OpenCode or Claude "
-    "Desktop to query your sustainability data using natural language.\n"
-    "Do you want to install and set up the Splunk MCP Server? (y/n): "
-).strip().lower()
+_setup_mcp = (
+    input(
+        "\nThe Splunk MCP Server (optional) enables AI assistants such as OpenCode or Claude "
+        "Desktop to query your sustainability data using natural language.\n"
+        "Do you want to install and set up the Splunk MCP Server? (y/n): "
+    )
+    .strip()
+    .lower()
+)
 setup_mcp = _setup_mcp in ("y", "yes")
 
 # Check that required (and optional) apps are installed, offering auto-install if not
@@ -919,9 +923,7 @@ update_saved_search(s, "Summarize Electricity CO2e/kWh V1.0", p)
 
 # Step 8 - Trigger both summary searches immediately so the dashboards have
 # data without waiting for the next scheduled runs (:23 and :24 past the hour).
-print(
-    "\nTriggering 'Summarize Asset CO2e & kW V1.0' to populate asset metrics..."
-)
+print("\nTriggering 'Summarize Asset CO2e & kW V1.0' to populate asset metrics...")
 state1 = dispatch_saved_search(i, "Summarize Asset CO2e & kW V1.0")
 if state1 == "DONE":
     print("  Asset CO2e & kW summary complete.")
@@ -953,9 +955,4 @@ if state1 == "DONE" and state2 == "DONE":
 else:
     print(
         "\nSetup finished with warnings — check the search logs in Splunk for details."
-    )
-else:
-    print(
-        f"Warning: summary search finished with state '{final_state}'. "
-        "Dashboard data may be incomplete — check the search logs in Splunk."
     )
