@@ -7,6 +7,7 @@
 # A companion setup script to automate the changes to Splunk Sustainability Toolkit to
 # allow for OpenTelemetry support
 #
+# v1.8 - 31-mar-2026 - Write opencode.json from user-supplied Splunk credentials when MCP is enabled.
 # v1.7 - 31-mar-2026 - Auto-install missing Python dependencies; auto-open dashboard on completion.
 # v1.6 - 30-mar-2026 - Dispatch summary search at end of setup so dashboard is immediately populated.
 # v1.5 - 30-mar-2026 - Write MAX_DAYS_HENCE=14 to TA-electricity-carbon-intensity props.conf.
@@ -1049,6 +1050,43 @@ if state1 == "DONE" and state2 == "DONE":
 else:
     print(
         "\nSetup finished with warnings — check the search logs in Splunk for details."
+    )
+
+# ---------------------------------------------------------------------------
+# Write opencode.json so OpenCode can connect to the Splunk MCP Server.
+# The file is written to the repo root (one level above the py/ directory).
+# It uses the same host/port/credentials the user already provided, so they
+# never have to edit the file by hand.
+# ---------------------------------------------------------------------------
+if setup_mcp:
+    _repo_root = Path(os.path.dirname(os.path.realpath(__file__))).parent
+    _opencode_json_path = _repo_root / "opencode.json"
+    _opencode_config = {
+        "$schema": "https://opencode.ai/config.json",
+        "mcp": {
+            "splunk-sustainability": {
+                "type": "local",
+                "command": ["python3", "splunk/mcp/splunk_mcp_proxy.py"],
+                "enabled": True,
+                "environment": {
+                    "SPLUNK_HOST": i["host"],
+                    "SPLUNK_PORT": str(i["port"]),
+                    "SPLUNK_USER": i["username"],
+                    "SPLUNK_PASS": i["password"],
+                },
+                "timeout": 60000,
+            }
+        },
+    }
+    with open(_opencode_json_path, "w") as _f:
+        json.dump(_opencode_config, _f, indent=2)
+        _f.write("\n")
+    print(
+        f"\nopencode.json written to {_opencode_json_path}\n"
+        "To use OpenCode with your sustainability data:\n"
+        f"  cd {_repo_root}\n"
+        "  opencode\n"
+        "Then ask questions like 'Which site has the highest carbon footprint?'"
     )
 
 if load_data not in ("y", "yes"):
