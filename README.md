@@ -207,8 +207,20 @@ Some of these macros need to be adjusted to work with OpenTelemetry data as they
 
 ### Results
 
-Give 2 hours for data to flow & scheduled summarization to run, but once it does, you can now leverage all of the out of the box working dashboards with your OpenTelemetry data to begin reporting on your sustinability outcomes!
+Now view The Sustainability Toolkit for Splunk app, and you should see a bunch of insights from your OpenTelemetry data to begin reporting on your sustinability outcomes!
 
+#### Chat with your sustainability data
+
+Want to chat with your sustainability data and manage sustainability insights with natural language? If you chose to install the MCP addon and setup the MCP server with the quickstart script, you can now chat with your data.
+
+1. Ensure you are in the root directory (`./ciscolive-splunk-sustainability`)
+2. Launch opencode with `./opencode`.
+3. Ask it a question, such as:
+	```
+    `How much co2eq will I save if I move A1_labuser2-1-1 to a cleaner site?
+	```
+4. Observe the intelligent response from our intelligent sustainability agent!
+ 
 **Change Workload Location**
 
 ![SST CO2e Savings from Location Changes](/static/sst-co2e-savings-loc.png)
